@@ -1,6 +1,6 @@
 import re
 from nltk.corpus import stopwords
-from goose import Goose
+from goose3 import Goose
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -37,11 +37,12 @@ def keywords_f(soup_obj):
     lines = (line.strip() for line in text.splitlines()) # break into line
     chunks = (phrase.strip() for line in lines for phrase in line.split("  ")) # break multi-headlines into a line each
     text = ''.join(chunk for chunk in chunks if chunk).encode('utf-8') # Get rid of all blank lines and ends of line
+    
     try:
         text = text.decode('unicode_escape').encode('ascii', 'ignore') # Need this as some websites aren't formatted
     except:                                                          
         return                                                       
-    text = re.sub("[^a-zA-Z+3]"," ", text)  
+    text = re.sub("[^a-zA-Z+3]"," ", text.decode("utf-8", "strict"))  
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text) # Fix spacing issue from merged words
     text = text.lower().split()  # Go to lower case and split them apart
     stop_words = set(stopwords.words("english")) # Filter out any stop words
@@ -53,25 +54,34 @@ def keywords_f(soup_obj):
 
 base_url = "http://www.indeed.com"    
 #change the start_url can scrape different cities.
-start_url = "http://www.indeed.com/jobs?q=data+scientist&l=San+Francisco%2C+CA"
+#start_url = "http://www.indeed.com/jobs?q=data+scientist&l=San+Francisco%2C+CA"
+start_url = "https://www.indeed.com/q-Data-Scientist-l-Los-Angeles-County,-CA-jobs.html"
 resp = requests.get(start_url)
-start_soup = BeautifulSoup(resp.content)
+start_soup = BeautifulSoup(resp.content,"lxml")
 urls = start_soup.findAll('a',{'rel':'nofollow','target':'_blank'}) #this are the links of the job posts
 urls = [link['href'] for link in urls] 
-num_found = start_soup.find(id = 'searchCount').string.encode('utf-8').split() #this returns the total number of results
-num_jobs = num_found[-1].split(',')
+#num_found = start_soup.find(id = 'searchCount').string.encode('utf-8').split() #this returns the total number of results
+num_found = start_soup.find(id = 'searchCount').string.split() #this returns the total number of results
+print("Num Found",num_found)
+
+num_jobs = num_found[-2].split(',')
+
+
 if len(num_jobs)>=2:
     num_jobs = int(num_jobs[0]) * 1000 + int(num_jobs[1])
+    
 else:
+    print("TEST>>>",num_jobs[0])
     num_jobs = int(num_jobs[0])
-num_pages = num_jobs/10 #calculates how many pages needed to do the scraping
+num_pages = int(num_jobs/16) #calculates how many pages needed to do the scraping
 job_keywords=[]
-print 'There are %d jobs found and we need to extract %d pages.'%(num_jobs,num_pages)
-print 'extracting first page of job searching results'
+print ('There are %d jobs found and we need to extract %d pages.'%(num_jobs,num_pages))
+print ('extracting first page of job searching results')
 # prevent the driver stopping due to the unexpectedAlertBehaviour.
 webdriver.DesiredCapabilities.FIREFOX["unexpectedAlertBehaviour"] = "accept"
 get_info = True
-driver=webdriver.Firefox()
+#driver=webdriver.Firefox()
+driver=webdriver.Chrome()
 # set a page load time limit so that don't have to wait forever if the links are broken.
 driver.set_page_load_timeout(15)
 for i in range(len(urls)):
@@ -84,23 +94,24 @@ for i in range(len(urls)):
     j = random.randint(1000,2200)/1000.0
     time.sleep(j) #waits for a random time so that the website don't consider you as a bot
     if get_info:
-        soup=BeautifulSoup(driver.page_source)
-        print 'extracting %d job keywords...' % i
+        soup=BeautifulSoup(driver.page_source,"lxml")
+        print ('extracting %d job keywords...' % i)
         single_job = keywords_f(soup)
-        print single_job,len(soup)
-        print driver.current_url
+        print (single_job,len(soup))
+        print (driver.current_url)
         job_keywords.append([driver.current_url,single_job])
     
 for k in range(1,num_pages+1):
 #this 5 pages reopen the browser is to prevent connection refused error.
     if k%5==0:
         driver.quit()
-        driver=webdriver.Firefox()
+        #driver=webdriver.Firefox()
+        driver=webdriver.Chrome()
         driver.set_page_load_timeout(15)
     current_url = start_url + "&start=" + str(k*10)
-    print 'extracting %d page of job searching results...' % k
+    print ('extracting %d page of job searching results...' % k)
     resp = requests.get(current_url)
-    current_soup = BeautifulSoup(resp.content)
+    current_soup = BeautifulSoup(resp.content,"lxml")
     current_urls = current_soup.findAll('a',{'rel':'nofollow','target':'_blank'})
     current_urls = [link['href'] for link in current_urls]
     for i in range(len(current_urls)):
@@ -113,11 +124,11 @@ for k in range(1,num_pages+1):
         j = random.randint(1500,3200)/1000.0
         time.sleep(j) #waits for a random time
         if get_info:
-            soup=BeautifulSoup(driver.page_source)
-            print 'extracting %d job keywords...' % i
+            soup=BeautifulSoup(driver.page_source,"lxml")
+            print ('extracting %d job keywords...' % i)
             single_job = keywords_f(soup)
-            print single_job,len(soup)
-            print driver.current_url
+            print (single_job,len(soup))
+            print (driver.current_url)
             job_keywords.append([driver.current_url,single_job])
 # use driver.quit() not driver.close() can get rid of the openning too many files error.
 driver.quit()
@@ -134,4 +145,4 @@ Result['Skill'] = dict.keys()
 Result['Count'] = dict.values()
 Result['Ranking'] = Result['Count']/float(len(job_keywords))
 
-Result.to_csv('San_Francisco_CA_0415.csv',index=False)
+Result.to_csv('Los_Angeles_CA_05_04_2018.csv',index=False)
